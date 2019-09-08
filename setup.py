@@ -26,7 +26,7 @@ setuptools.setup(
         "redis",
         "click",
         "virtualenv",
-        "gitpython"
+        "gitpython",
         "torch==0.4.1"
     ],
     entry_points={

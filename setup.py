@@ -25,7 +25,9 @@ setuptools.setup(
         "visdom",
         "redis",
         "click",
-        "virtualenv"
+        "virtualenv",
+        "gitpython"
+        "torch==0.4.1"
     ],
     entry_points={
         'console_scripts': [

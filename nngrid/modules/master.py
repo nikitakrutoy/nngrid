@@ -56,6 +56,7 @@ class Master(Flask):
             mode=mode,
             workers_num=workers_num,
             project=project,
+            local=local
         ))
 
         if dev:

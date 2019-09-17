@@ -27,7 +27,7 @@ setuptools.setup(
         "click",
         "virtualenv",
         "gitpython",
-        "torch==0.4.1"
+        "torch"
     ],
     entry_points={
         'console_scripts': [

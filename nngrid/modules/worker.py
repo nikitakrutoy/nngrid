@@ -102,6 +102,7 @@ def worker(project, config):
     with open(project_config_path, "r") as f:
         state.update(**json.load(f))
 
+    server = f"http://{state['master_url']}:{state['port']}"
     state["id"] = os.getpid() if state["master_url"] == "localhost" else str(requests.get(server + "/getid").content)
 
     state.update(
@@ -112,7 +113,6 @@ def worker(project, config):
         upload_time=[],
         loss=[],
     )
-    server = f"http://{state['master_url']}:{state['port']}"
 
     while True:
         try:

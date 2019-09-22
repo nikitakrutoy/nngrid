@@ -56,7 +56,10 @@ def step(model_state):
         grads=grads,
         worker_state=state,
     )
-    requests.post(state["master_url"] + "/update", data=pickle.dumps(data))
+
+    server = f"http://{state['master_url']}:{state['port']}"
+
+    requests.post(server + "/update", data=pickle.dumps(data))
 
 
 def collect(model):
@@ -82,9 +85,7 @@ def run(project, config):
 @click.option('-c', '--config', help='config path', type=str)
 def worker(project, config):
     global state
-    state = {
-        "id": os.getpid()
-    }
+    state = {}
 
     project_path = os.path.join(ROOT_DIR, 'projects', project)
     sys.path.append(
@@ -96,10 +97,6 @@ def worker(project, config):
     with open(project_config_path, "r") as f:
         state.update(**json.load(f))
 
-    # # loading worker config
-    # worker_config_path = os.path.join(ROOT_DIR, 'config.json') if config is None else config
-    # with open(worker_config_path, "r") as f:
-    #     state.update(**json.load(f))
     state["id"] = os.getpid() if state["master_url"] == "localhost" else str(requests.get(server + "/getid").content)
 
     state.update(
@@ -108,10 +105,12 @@ def worker(project, config):
         compute_time=[],
         loss=[],
     )
+    server = f"http://{state['master_url']}:{state['port']}"
 
     while True:
         try:
             response = requests.get(state["master_url"] + "/pull")
+            response = requests.get(server + "/pull")
         except requests.exceptions.ConnectionError as e:
             logging.info("Looks like master is unavailable")
             raise e

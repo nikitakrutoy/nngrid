@@ -96,7 +96,7 @@ def update(data):
             STATE["status"] = "serving"
 
     if STATE['mode'] == 'async':
-        grads = pickle.loads(io.BytesIO(data))["grads"]
+        grads = pickle.loads(data)["grads"]
         apply(grads)
 
 

@@ -12,6 +12,7 @@ import nngrid.utils as utils
 import visdom
 import time
 import sys
+import io
 from hashlib import md5
 
 from filelock import Timeout, FileLock
@@ -95,6 +96,7 @@ def update(data):
             STATE["status"] = "serving"
 
     if STATE['mode'] == 'async':
-        apply(data["grads"])
+        grads = pickle.loads(io.BytesIO(data))["grads"]
+        apply(grads)
 
 

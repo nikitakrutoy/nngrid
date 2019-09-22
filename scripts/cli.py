@@ -13,6 +13,7 @@ def main():
     if not os.path.isdir(os.path.expanduser("~/.nngrid")):
         os.makedirs(os.path.expanduser("~/.nngrid/projects"))
         os.makedirs(os.path.expanduser("~/.nngrid/configs"))
+        os.makedirs(os.path.expanduser("~/.nngrid/updates"))
 
 
 main.add_command(master.run)

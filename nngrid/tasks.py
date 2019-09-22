@@ -14,6 +14,8 @@ import time
 import sys
 from hashlib import md5
 
+from filelock import Timeout, FileLock
+
 from nngrid.constants import *
 from nngrid.constants import STATE
 
@@ -46,17 +48,22 @@ def apply(grads):
     # LOAD
     sys.path.append(STATE["project_path"])
     states_dir = os.path.join(STATE["project_path"], "states",)
+
     model_state_path = os.path.join(states_dir, "model_state.torch")
+    model_state_path_lock = model_state_path + ".lock"
     opt_state_path = os.path.join(states_dir, "opt_state.torch")
+    opt_state_path_lock = opt_state_path + ".lock"
     module = im.import_module('model')
 
     model = module.Model(**STATE["model_config"])
     if os.path.isfile(model_state_path):
-        model.load_state_dict(torch.load(model_state_path))
+        with FileLock(model_state_path_lock, timeout=1) as lock:
+            model.load_state_dict(torch.load(model_state_path))
 
     opt = module.Opt(model.parameters(), **STATE["opt_config"])
     if os.path.isfile(opt_state_path):
-        opt.load_state_dict(torch.load(opt_state_path))
+        with FileLock(opt_state_path_lock, timeout=1) as lock:
+            opt.load_state_dict(torch.load(opt_state_path))
 
     # APPLY
     opt.zero_grad()

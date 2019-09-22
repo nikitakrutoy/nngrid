@@ -1,4 +1,5 @@
 from flask import Flask, request, send_file, Response, jsonify
+from filelock import Timeout, FileLock
 import io
 import torch
 import pickle
@@ -94,8 +95,10 @@ def update():
 def pull():
     if STATE["status"] == "serving":
         model_state_path = os.path.join(STATE["project_path"], "states", "model_state.torch")
+        model_state_path_lock = model_state_path + ".lock"
         if os.path.isfile(model_state_path):
-            model_state = torch.load(model_state_path)
+            with FileLock(model_state_path_lock, timeout=1) as lock:
+                model_state = torch.load(model_state_path)
         else:
             sys.path.append(os.path.expanduser(STATE["project_path"]))
             model_state = im.import_module('model').Model(**STATE["model_config"]).state_dict()

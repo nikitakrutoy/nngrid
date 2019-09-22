@@ -100,6 +100,7 @@ def worker(project, config):
     # worker_config_path = os.path.join(ROOT_DIR, 'config.json') if config is None else config
     # with open(worker_config_path, "r") as f:
     #     state.update(**json.load(f))
+    state["id"] = os.getpid() if state["master_url"] == "localhost" else str(requests.get(server + "/getid").content)
 
     state.update(
         project_path=project_path,

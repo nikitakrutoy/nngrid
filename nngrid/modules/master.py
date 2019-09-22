@@ -9,6 +9,7 @@ import subprocess
 import nngrid.tasks
 import sys
 import importlib as im
+from hashlib import md5
 
 from nngrid.constants import *
 from nngrid.utils import ExpandedPath
@@ -79,6 +80,10 @@ def hello():
 @APP.route("/ping")
 def ping():
     return "pong"
+
+@APP.route("/getid")
+def getid():
+    return md5(str(request.headers).encode()).hexdigest()
 
 
 @APP.route("/update", methods=["POST"])

@@ -10,10 +10,14 @@ import time
 import logging
 import sys
 import subprocess
-logging.basicConfig(level="INFO")
+import numpy as np
+from tqdm.auto import tqdm
+from functools import reduce
+logging.basicConfig(level="DEBUG")
 
 
 def step(model_state):
+    logging.info("Doing model step")
     start_time = time.time()
 
     module = im.import_module('model')
@@ -25,8 +29,9 @@ def step(model_state):
     )
 
     batch_size = state["batch_size"]
-    start = state["step_num"]
-    X, y = dataset[start * batch_size: (start + 1) * batch_size]
+    # start = state["step_num"]
+    start = np.random.randint(0, len(dataset) - batch_size)
+    X, y = dataset[start: start + batch_size]
 
     loss = module.Loss(model)
     loss_value = loss(X, y)
@@ -38,18 +43,18 @@ def step(model_state):
     state["compute_time"].append(time.time() - start_time)
     state["loss"].append(loss_value.item())
 
-    # vis = visdom.Visdom(env="main", use_incoming_socket=False)
+    vis = visdom.Visdom(
+        server=f"http://{state['master_url']}", 
+        env="main", 
+        use_incoming_socket=False
+    )
 
-    # plots = []
-    # for filename in os.listdir(os.path.join(state["project_path"], "metrics")):
-    #     metric_module = utils.get_module_name(filename)
-    #     if metric_module:
-    #         plots.extend(im.import_module(f"metrics.{metric_module}").metrics)
-
-    # for plot in plots:
-    #     plot(vis, state)
-
-    # del vis
+    plots = []
+    for filename in os.listdir(os.path.join(state["project_path"], "metrics")):
+        metric_module = utils.get_module_name(filename)
+        if metric_module:
+            for f in im.import_module(f"metrics.{metric_module}").metrics:
+                f(vis, state)
 
     grads = collect(model)
     data = dict(
@@ -103,18 +108,20 @@ def worker(project, config):
         project_path=project_path,
         step_num=0,
         compute_time=[],
+        download_time=[],
+        upload_time=[],
         loss=[],
     )
     server = f"http://{state['master_url']}:{state['port']}"
 
     while True:
         try:
-            response = requests.get(state["master_url"] + "/pull")
+            logging.info("Downloading data")
             response = requests.get(server + "/pull")
         except requests.exceptions.ConnectionError as e:
             logging.info("Looks like master is unavailable")
             raise e
-
+        logging.debug("Status %s", response.status_code)
         if response.status_code == 200:
             model_state = pickle.loads(response.content)
             step(model_state)

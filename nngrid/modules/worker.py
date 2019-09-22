@@ -13,7 +13,6 @@ import subprocess
 import numpy as np
 from tqdm.auto import tqdm
 from functools import reduce
-logging.basicConfig(level="DEBUG")
 
 
 def step(model_state):
@@ -104,7 +103,7 @@ def worker(project, config):
         state.update(**json.load(f))
 
     server = f"http://{state['master_url']}:{state['port']}"
-    state["id"] = os.getpid() if state["master_url"] == "localhost" else str(requests.get(server + "/getid").content)
+    state["id"] = os.getpid() if state["master_url"] == "localhost" else requests.get(server + "/getid").content.decode()
 
     state.update(
         project_path=project_path,
@@ -118,13 +117,15 @@ def worker(project, config):
     while True:
         try:
             logging.info("Downloading data")
+            start = time.time()
             response = requests.get(server + "/pull")
+            end = time.time()
         except requests.exceptions.ConnectionError as e:
             logging.info("Looks like master is unavailable")
             raise e
         logging.debug("Status %s", response.status_code)
         if response.status_code == 200:
-            state["download_time"].append(response.elapsed.total_seconds())
+            state["download_time"].append(end - start)
             model_state = pickle.loads(response.content)
             step(model_state)
         else:

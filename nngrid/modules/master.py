@@ -83,7 +83,7 @@ def ping():
 
 @APP.route("/getid")
 def getid():
-    return str(md5(str(request.headers).encode()).hexdigest())
+    return md5(str(request.headers).encode()).hexdigest()
 
 
 @APP.route("/update", methods=["POST"])
@@ -128,7 +128,7 @@ def start():
 @click.command("master")
 @click.argument("project", required=1, type=ExpandedPath(exists=True, resolve_path=True))
 @click.option("--port", "-p", type=int, default=8088)
-@click.option("--mode", "-m", type=click.Choice(['sync', 'async'],), default='sync')
+@click.option("--mode", "-m", type=click.Choice(['sync', 'async'],), default='async')
 @click.option("--local", "-l", is_flag=True)
 @click.option("--dev", is_flag=True)
 @click.option("--config", "-c", type=str)

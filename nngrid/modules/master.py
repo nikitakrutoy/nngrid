@@ -83,7 +83,7 @@ def ping():
 
 @APP.route("/getid")
 def getid():
-    return md5(str(request.headers).encode()).hexdigest()
+    return str(md5(str(request.headers).encode()).hexdigest())
 
 
 @APP.route("/update", methods=["POST"])

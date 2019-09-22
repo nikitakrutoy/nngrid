@@ -64,7 +64,8 @@ def step(model_state):
 
     server = f"http://{state['master_url']}:{state['port']}"
 
-    requests.post(server + "/update", data=pickle.dumps(data))
+    response = requests.post(server + "/update", data=pickle.dumps(data))
+    state["upload_time"].append(response.elapsed.total_seconds())
 
 
 def collect(model):
@@ -123,6 +124,7 @@ def worker(project, config):
             raise e
         logging.debug("Status %s", response.status_code)
         if response.status_code == 200:
+            state["download_time"].append(response.elapsed.total_seconds())
             model_state = pickle.loads(response.content)
             step(model_state)
         else:

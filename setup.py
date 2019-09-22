@@ -27,7 +27,9 @@ setuptools.setup(
         "click",
         "virtualenv",
         "gitpython",
-        "torch"
+        "torch",
+        "filelock",
+        "tqdm",
     ],
     entry_points={
         'console_scripts': [

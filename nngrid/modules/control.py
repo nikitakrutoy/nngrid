@@ -6,16 +6,14 @@ import logging
 
 from nngrid.constants import *
 
-@click.group()
-def controll():
-    pass
+@click.command("control")
+@click.argument("c")
+def run(c):
+    if c == "restart":
+        restart()
 
-
-@click.command("restart")
 def restart():
-    config_path =  os.path.join(STATE["project_path"], "config.json")
-    config = json.load(config_path)
+    with open(os.path.join(STATE["project_path"], "config.json")) as f:
+        config = json.load(f)
     requests.get(f'http://localhost:{STATE["port"]}/restart')
     logging.info("Restarted")
-
-controll.add_command()

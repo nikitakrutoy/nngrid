@@ -3,6 +3,7 @@
 import click
 import nngrid.modules.master as master
 import nngrid.modules.worker as worker
+import nngrid.modules.control as control
 from nngrid.modules.clone import clone
 
 import os
@@ -18,6 +19,7 @@ def main():
 
 main.add_command(master.run)
 main.add_command(worker.run)
+main.add_command(control.run)
 main.add_command(clone)
 
 

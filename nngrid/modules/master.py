@@ -135,6 +135,7 @@ def restart():
     os.remove(model_state_path)
     os.remove(opt_state_path)
     lock.release()
+    return Response(status=200)
 
 
 

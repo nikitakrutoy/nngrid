@@ -124,6 +124,19 @@ def start():
     STATE["status"] = "distributing"
     return Response(status=200)
 
+@APP.route("/restart")
+def restart():
+    states_dir = os.path.join(STATE["project_path"], "states",)
+    model_state_path = os.path.join(states_dir, "model_state.torch")
+    opt_state_path = os.path.join(states_dir, "opt_state.torch")
+    lock_path = os.path.join(states_dir, "lock")
+    lock = FileLock(lock_path, timeout=-1)
+    lock.acquire()
+    os.remove(model_state_path)
+    os.remove(opt_state_path)
+    lock.release()
+
+
 
 @click.command("master")
 @click.argument("project", required=1, type=ExpandedPath(exists=True, resolve_path=True))

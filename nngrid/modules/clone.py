@@ -16,7 +16,7 @@ def extract_project_name(git_url):
 
 class Progress(git.remote.RemoteProgress):
     def update(self, op_code, cur_count, max_count=None, message=''):
-        logging.debug(self._cur_line)
+        logging.info(self._cur_line)
 
 
 @click.command()

@@ -28,7 +28,6 @@ def step(model_state):
     )
 
     batch_size = state["batch_size"]
-    # start = state["step_num"]
     start = np.random.randint(0, len(dataset) - batch_size)
     X, y = dataset[start: start + batch_size]
 

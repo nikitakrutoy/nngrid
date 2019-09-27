@@ -56,9 +56,10 @@ def apply(grads):
 
     module = im.import_module('model')
 
-    lock = FileLock(lock_path, timeout=-1)
-    lock.acquire()
-    
+    if STATE["mode"] == "async":
+        lock = FileLock(lock_path, timeout=-1)
+        lock.acquire()
+
     model = module.Model(**STATE["model_config"])
     if os.path.isfile(model_state_path):
         model.load_state_dict(torch.load(model_state_path))
@@ -79,8 +80,9 @@ def apply(grads):
     # SAVE
     torch.save(model.state_dict(), model_state_path)
     torch.save(opt.state_dict(), opt_state_path)
-
-    lock.release()
+    
+    if STATE["mode"] == "async":
+        lock.release()
 
 
 

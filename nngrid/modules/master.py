@@ -136,11 +136,9 @@ def restart():
     model_state_path = os.path.join(states_dir, "model_state.torch")
     opt_state_path = os.path.join(states_dir, "opt_state.torch")
     lock_path = os.path.join(states_dir, "lock")
-    lock = FileLock(lock_path, timeout=-1)
-    lock.acquire()
-    os.remove(model_state_path)
-    os.remove(opt_state_path)
-    lock.release()
+    with FileLock(lock_path, timeout=-1) as l:
+        os.remove(model_state_path)
+        os.remove(opt_state_path)
     return Response(status=200)
 
 

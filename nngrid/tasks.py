@@ -83,9 +83,12 @@ def apply(grads):
 def update(data):
     if STATE['mode'] == 'sync':
         file_hash = md5(data).hexdigest()
-        with open(f"{UPDATES_DIR}/update_{file_hash}", "wb") as f:
-            f.write(data)
-        updates = os.listdir(UPDATES_DIR)
+        states_dir = os.path.join(STATE["project_path"], "states",)
+        lock_path = os.path.join(states_dir, "lock")
+        with FileLock(lock_path, timeout=-1):
+            with open(f"{UPDATES_DIR}/update_{file_hash}", "wb") as f:
+                f.write(data)
+            updates = os.listdir(UPDATES_DIR)
         if len(updates) >= STATE["workers_num"]:
             grads = aggregate(updates)
             apply(grads)

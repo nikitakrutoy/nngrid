@@ -65,7 +65,7 @@ class Master(Flask):
             STATE["status"] = "serving"
             self._run_dev()
         else:
-            STATE["status"] = "started"
+            STATE["status"] = "idle"
             self._run_gunicron()
 
 
@@ -121,8 +121,14 @@ def pull():
 
 @APP.route("/start")
 def start():
-    STATE["status"] = "distributing"
+    STATE["status"] = "serving"
     return Response(status=200)
+
+@APP.route("/stop")
+def stop():
+    STATE["status"] = "idle"
+    return Response(status=200)
+
 
 @APP.route("/restart")
 def restart():

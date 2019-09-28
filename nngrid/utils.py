@@ -8,7 +8,7 @@ import shutil
 import logging
 
 FORMAT = '%(asctime)-15s %(message)s'
-logging.basicConfig(format=FORMAT, level="DEBUG")
+logging.basicConfig(format=FORMAT, level="INFO")
 
 
 def execute(cmd):

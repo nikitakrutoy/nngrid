@@ -13,6 +13,7 @@ import visdom
 import time
 import sys
 import io
+import logging
 from hashlib import md5
 
 from filelock import Timeout, FileLock
@@ -25,13 +26,10 @@ celery = Celery(
     backend='db+sqlite:///db.sqlite',
     broker='redis://localhost:6378'
 )
-# Optimization TODOs
-# TODO: Add DB storage
-# TODO: Add logging
-# TODO: Add virtualenv for projects
 
 
 def aggregate(updates):
+    logging.info("Aggregating")
     result = None
     for i, update in enumerate(updates):
         with open(f"{UPDATES_DIR}/{update}", "rb") as f:
@@ -56,33 +54,28 @@ def apply(grads):
 
     module = im.import_module('model')
 
-    if STATE["mode"] == "async":
-        lock = FileLock(lock_path, timeout=-1)
-        lock.acquire()
+    with FileLock(lock_path, timeout=-1) as lock:
 
-    model = module.Model(**STATE["model_config"])
-    if os.path.isfile(model_state_path):
-        model.load_state_dict(torch.load(model_state_path))
+        model = module.Model(**STATE["model_config"])
+        if os.path.isfile(model_state_path):
+            model.load_state_dict(torch.load(model_state_path))
 
-    opt = module.Opt(model.parameters(), **STATE["opt_config"])
-    if os.path.isfile(opt_state_path):
-        opt.load_state_dict(torch.load(opt_state_path))
+        opt = module.Opt(model.parameters(), **STATE["opt_config"])
+        if os.path.isfile(opt_state_path):
+            opt.load_state_dict(torch.load(opt_state_path))
 
-    # APPLY
-    opt.zero_grad()
-    for param, grad in zip(model.parameters(), grads):
-        param.grad = grad
-    opt.step()
+        # APPLY
+        opt.zero_grad()
+        for param, grad in zip(model.parameters(), grads):
+            param.grad = grad
+        opt.step()
 
-    if not os.path.exists(states_dir):
-        os.mkdir(states_dir)
+        if not os.path.exists(states_dir):
+            os.mkdir(states_dir)
 
-    # SAVE
-    torch.save(model.state_dict(), model_state_path)
-    torch.save(opt.state_dict(), opt_state_path)
-    
-    if STATE["mode"] == "async":
-        lock.release()
+        # SAVE
+        torch.save(model.state_dict(), model_state_path)
+        torch.save(opt.state_dict(), opt_state_path)
 
 
 

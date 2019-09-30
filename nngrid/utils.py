@@ -4,11 +4,12 @@ import os
 import click
 import subprocess
 import shutil
+import psycopg2
 
 import logging
 
 FORMAT = '%(asctime)-15s %(message)s'
-logging.basicConfig(format=FORMAT, level="INFO")
+logging.basicConfig(format=FORMAT, level="DEBUG")
 
 
 def execute(cmd):
@@ -37,6 +38,25 @@ class State(redis.Redis):
         })
 
 
+class PostgressConnector:
+    def __init__(self, host):
+        self.conn = psycopg2.connect(
+            f"dbname='postgres' user='postgres' host='{host}' password='docker'"
+        )
+        self.query = \
+            "INSERT INTO data " \
+            "VALUES (%(worker_id)s, %(run_id)s, %(step)s, %(loss)s, %(compute_time)s, %(download_time)s, %(upload_time)s, CURRENT_TIMESTAMP)"
+
+    def insert(self, data):
+        cur = self.conn.cursor()
+        cur.execute(
+            self.query,
+            data
+        )
+        self.conn.commit()
+        cur.close()
+
+
 class ExpandedPath(click.Path):
     def convert(self, value, *args, **kwargs):
         value = os.path.expanduser(value)
@@ -51,3 +71,4 @@ def get_module_name(filename):
 
 def nukedir(dir):
     shutil.rmtree(dir, ignore_errors=True)
+    

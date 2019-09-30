@@ -30,6 +30,7 @@ setuptools.setup(
         "torch",
         "filelock",
         "tqdm",
+        "psycopg2-binary",
     ],
     entry_points={
         'console_scripts': [

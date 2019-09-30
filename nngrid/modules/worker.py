@@ -102,14 +102,14 @@ def worker(project, config):
         state.update(**json.load(f))
 
     server = f"http://{state['master_url']}:{state['port']}"
-    state["id"] = os.getpid() if state["master_url"] == "localhost" else requests.get(server + "/getid").content.decode()
+    state["worker_id"] = os.getpid() if state["master_url"] == "localhost" else requests.get(server + "/getid").content.decode()
 
     state.update(
         project_path=project_path,
         step_num=0,
         compute_time=[],
         download_time=[],
-        upload_time=[],
+        upload_time=[0],
         loss=[],
     )
 

@@ -8,12 +8,16 @@ import click
 import subprocess
 import nngrid.tasks
 import sys
+import logging
 import importlib as im
 from hashlib import md5
+from uuid import uuid1
 
 from nngrid.constants import *
-from nngrid.utils import ExpandedPath
+from nngrid.utils import ExpandedPath, nukedir
 
+logging.getLogger("requests").setLevel(logging.INFO)
+logging.getLogger("pickle").setLevel(logging.INFO)
 
 class Master(Flask):
     @staticmethod
@@ -23,14 +27,19 @@ class Master(Flask):
         address = f"{host}:{port}"
         current_dir = os.path.dirname(__file__)
         command = [
-            "gunicorn", "nngrid.modules.master:APP", "-b", address, "--chdir", current_dir
+            "gunicorn", "nngrid.modules.master:APP", "-b", address, "--chdir", current_dir,
+            "--access-logfile", '-',
+            "--error-logfile", '-',
+            '--timeout', '1000',
+            '-w', '3',
         ]
+        logging.debug(" ".join(command))
         subprocess.call(command)
 
     def _run_dev(self):
         host = "127.0.0.1" if STATE["local"] else "0.0.0.0"
         port = STATE["port"]
-        super().run(host=host, port=port, debug=True)
+        super().run(host=host, port=port, debug=True, threaded=True)
 
     def run(
             self,
@@ -41,6 +50,7 @@ class Master(Flask):
             dev=True,
             config=None,
             workers_num=-1,
+            run_name=None,
     ):
         *_, project_name = os.path.abspath(project).split("/")
         STATE.mset(dict(
@@ -58,7 +68,8 @@ class Master(Flask):
             mode=mode,
             workers_num=workers_num,
             project=project,
-            local=local
+            local=local,
+            run_id=uuid1().hex if run_name is None else run_name
         ))
 
         if dev:
@@ -83,16 +94,17 @@ def ping():
 
 @APP.route("/getid")
 def getid():
-    return md5(str(request.headers).encode()).hexdigest()
+    return md5(str(request.remote_addr).encode()).hexdigest()
 
 
 @APP.route("/update", methods=["POST"])
 def update():
-    updates = os.listdir(UPDATES_DIR)
-    if STATE["mode"] == "sync" and len(updates) + 1 >= STATE["workers_num"]:
-        STATE["status"] = "aggregating"
-    data = request.get_data()
-    nngrid.tasks.update(data)
+    if STATE["status"] == "serving":
+        updates = os.listdir(UPDATES_DIR)
+        if STATE["mode"] == "sync" and len(updates) + 1 >= STATE["workers_num"]:
+            STATE["status"] = "aggregating"
+        data = request.get_data()
+        nngrid.tasks.update(data)
     return Response(status=200)
 
 
@@ -101,6 +113,7 @@ def pull():
     if STATE["status"] == "serving":
         model_state_path = os.path.join(STATE["project_path"], "states", "model_state.torch")
         model_state_path_lock = model_state_path + ".lock"
+        print(model_state_path, os.path.isfile(model_state_path))
         if os.path.isfile(model_state_path):
             with FileLock(model_state_path_lock, timeout=1) as lock:
                 model_state = torch.load(model_state_path)
@@ -136,20 +149,33 @@ def restart():
     model_state_path = os.path.join(states_dir, "model_state.torch")
     opt_state_path = os.path.join(states_dir, "opt_state.torch")
     lock_path = os.path.join(states_dir, "lock")
+
+    # removing update
+    list(map(
+        lambda path: os.remove(path),
+        map(
+            lambda file: os.path.join(UPDATES_DIR, file), 
+            os.listdir(UPDATES_DIR)
+        )
+    ))
+
     with FileLock(lock_path, timeout=-1) as l:
         os.remove(model_state_path)
         os.remove(opt_state_path)
+    
+    STATE.set("run_id", uuid1().hex)
     return Response(status=200)
 
 
 
 @click.command("master")
 @click.argument("project", required=1, type=ExpandedPath(exists=True, resolve_path=True))
-@click.option("--port", "-p", type=int, default=8088)
+@click.option("--port", "-p", type=int, default=5000)
 @click.option("--mode", "-m", type=click.Choice(['sync', 'async'],), default='async')
 @click.option("--local", "-l", is_flag=True)
 @click.option("--dev", is_flag=True)
 @click.option("--config", "-c", type=str)
 @click.option("--workers_num", "-w", default=-1)
+@click.option("--run_name", type=str)
 def run(*args, **kwargs):
     APP.run(*args, **kwargs)

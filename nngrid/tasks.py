@@ -20,7 +20,7 @@ from filelock import Timeout, FileLock
 
 from nngrid.constants import *
 from nngrid.constants import STATE
-from nngrid.utils import PostgressConnector
+from nngrid.utils import PostgressMetricsConnector
 
 
 logging.getLogger("filelock").setLevel(logging.WARNING)
@@ -31,7 +31,7 @@ celery = Celery(
     broker='redis://localhost:6378'
 )
 
-db = PostgressConnector("localhost")
+db = PostgressMetricsConnector("localhost")
 
 def aggregate(updates):
     logging.info("Aggregating, " + STATE["status"])
@@ -83,20 +83,21 @@ def apply(grads):
         torch.save(opt.state_dict(), opt_state_path)
 
 
+@celery.task
+def metrics(data):
+    data = pickle.loads(data)
+    data.update(
+            run_id=STATE['run_id'],
+            loss=data["loss"][-1],
+            download_time=data["download_time"][-1],
+            upload_time=data["upload_time"][-1],
+            compute_time=data["compute_time"][-1],
+        )
+    db.insert(data)
 
 @celery.task
 def update(data):
-    data = pickle.loads(data)
-    grads = data["grads"]
-    worker_state = data["worker_state"]
-    worker_state.update(
-        run_id=STATE['run_id'],
-        loss=worker_state["loss"][-1],
-        download_time=worker_state["download_time"][-1],
-        upload_time=worker_state["upload_time"][-1],
-        compute_time=worker_state["compute_time"][-1],
-    )
-    db.insert(worker_state)
+    grads = pickle.loads(data)
     if STATE['mode'] == 'sync':
         file_hash = md5(data).hexdigest()
         states_dir = os.path.join(STATE["project_path"], "states",)

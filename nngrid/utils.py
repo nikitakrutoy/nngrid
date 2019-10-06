@@ -38,14 +38,14 @@ class State(redis.Redis):
         })
 
 
-class PostgressConnector:
+class PostgressMetricsConnector:
     def __init__(self, host):
         self.conn = psycopg2.connect(
             f"dbname='postgres' user='postgres' host='{host}' password='docker'"
         )
         self.query = \
             "INSERT INTO data " \
-            "VALUES (%(worker_id)s, %(run_id)s, %(step_num)s, %(loss)s, %(compute_time)s, %(download_time)s, %(upload_time)s, CURRENT_TIMESTAMP)"
+            "VALUES (%(worker_id)s, %(run_id)s, %(step_num)s, %(loss)s, %(compute_time)s, %(download_time)s, %(upload_time)s, CURRENT_TIMESTAMP, %(eval)s)"
 
     def insert(self, data):
         cur = self.conn.cursor()
@@ -55,6 +55,13 @@ class PostgressConnector:
         )
         self.conn.commit()
         cur.close()
+    
+    def fetchone(self, query):
+        cur = self.conn.cursor()
+        cur.execute(query)
+        result = cur.fetchone()
+        cur.close()
+        return result
 
 
 class ExpandedPath(click.Path):

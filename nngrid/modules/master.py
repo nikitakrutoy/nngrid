@@ -14,10 +14,12 @@ from hashlib import md5
 from uuid import uuid1
 
 from nngrid.constants import *
-from nngrid.utils import ExpandedPath, nukedir
+from nngrid.utils import ExpandedPath, nukedir, PostgressMetricsConnector
 
 logging.getLogger("requests").setLevel(logging.INFO)
 logging.getLogger("pickle").setLevel(logging.INFO)
+
+db = PostgressMetricsConnector("localhost")
 
 class Master(Flask):
     @staticmethod
@@ -92,10 +94,24 @@ def hello():
 def ping():
     return "pong"
 
-@APP.route("/getid")
-def getid():
-    return md5(str(request.remote_addr).encode()).hexdigest()
+@APP.route("/init")
+def init_worker():
+    remote_addr = str(request.environ['REMOTE_ADDR'])
+    pid = str(request.args.get("pid"))
+    worker_id = md5((remote_addr + pid).encode()).hexdigest()
 
+    query = "SELECT MAX(step) as last_step, SUM(compute_time) as compute_time " \
+        "FROM data " \
+        f"WHERE run_id = '{STATE['run_id']}' "\
+        f"AND worker_id = '{worker_id}' "
+    last_step, compute_time = db.fetchone(query)
+    return jsonify(worker_id, last_step, compute_time)
+
+@APP.route("/metrics", methods=["POST"])
+def metrics():
+    if STATE["status"] == "serving":
+        nngrid.tasks.metrics(request.get_data())
+    return Response(status=200)
 
 @APP.route("/update", methods=["POST"])
 def update():
@@ -103,8 +119,7 @@ def update():
         updates = os.listdir(UPDATES_DIR)
         if STATE["mode"] == "sync" and len(updates) + 1 >= STATE["workers_num"]:
             STATE["status"] = "aggregating"
-        data = request.get_data()
-        nngrid.tasks.update(data)
+        nngrid.tasks.update(request.get_data())
     return Response(status=200)
 
 
@@ -113,7 +128,6 @@ def pull():
     if STATE["status"] == "serving":
         model_state_path = os.path.join(STATE["project_path"], "states", "model_state.torch")
         model_state_path_lock = model_state_path + ".lock"
-        print(model_state_path, os.path.isfile(model_state_path))
         if os.path.isfile(model_state_path):
             with FileLock(model_state_path_lock, timeout=1) as lock:
                 model_state = torch.load(model_state_path)

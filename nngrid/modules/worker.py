@@ -15,7 +15,7 @@ import torch
 from tqdm.auto import tqdm
 from functools import reduce
 
-device = torch.device("cuda") if torch.cuda.is_avaliable() else torch.device("cpu")
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 def step(model_state):
     logging.info("Doing model step")
@@ -31,14 +31,19 @@ def step(model_state):
     )
 
     batch_size = state["batch_size"]
-    start = np.random.randint(0, len(dataset) - batch_size)
-    X, y = dataset[start: start + batch_size]
+    if not state['eval']:
+        start = np.random.randint(0, int(len(dataset) * 0.8 - batch_size)) 
+        X, y = dataset[start: start + batch_size]
+    else:
+        start = int(len(dataset) * 0.8 - batch_size)
+        X, y = dataset[start:start + 20]
     X = X.to(device)
     y = y.to(device)
 
     loss = module.Loss(model)
     loss_value = loss(X, y)
-    loss_value.backward()
+    if not state["eval"]:
+        loss_value.backward()
 
     # Compute metrics here
 
@@ -59,16 +64,19 @@ def step(model_state):
             for f in im.import_module(f"metrics.{metric_module}").metrics:
                 f(vis, state)
 
-    grads = collect(model)
-    data = dict(
-        grads=grads,
-        worker_state=state,
-    )
+    
+
 
     server = f"http://{state['master_url']}:{state['port']}"
+    if not state["eval"]:
+        grads = collect(model)
+        response = requests.post(server + "/update", data=pickle.dumps(grads))
+        state["upload_time"].append(response.elapsed.total_seconds())
+    else:
+        state["upload_time"].append(0)
+    
+    requests.post(server + "/metrics", data=pickle.dumps(state))
 
-    response = requests.post(server + "/update", data=pickle.dumps(data))
-    state["upload_time"].append(response.elapsed.total_seconds())
 
 
 def collect(model):
@@ -77,13 +85,16 @@ def collect(model):
 
 @click.command("worker")
 @click.argument("project")
+@click.option("--eval", is_flag=True)
 @click.option('-c', '--config', help='config path', type=str)
-def run(project, config):
+def run(project, eval, config):
     project_path = os.path.join(ROOT_DIR, 'projects', project)
     env = os.path.join(project_path, "./env/bin/python")
     command = [
             env, __file__, project
         ]
+    if eval:
+        command += ["--eval"]
     if config is not None:
         command += ["-c", config]
     subprocess.call(command)
@@ -91,8 +102,9 @@ def run(project, config):
 
 @click.command()
 @click.argument("project")
+@click.option("--eval", is_flag=True)
 @click.option('-c', '--config', help='config path', type=str)
-def worker(project, config):
+def worker(project, eval, config):
     global state
     state = {}
 
@@ -107,15 +119,21 @@ def worker(project, config):
         state.update(**json.load(f))
 
     server = f"http://{state['master_url']}:{state['port']}"
-    state["worker_id"] = os.getpid() if state["master_url"] == "localhost" else requests.get(server + "/getid").content.decode()
+
+    worker_id, last_step, compute_time = requests.get(
+        server + "/init",
+        params=dict(pid=os.getpid()),
+    ).json()
 
     state.update(
+        worker_id=worker_id,
         project_path=project_path,
-        step_num=0,
-        compute_time=[],
+        step_num=0 if last_step is None else last_step,
+        compute_time=[] if compute_time is None else [compute_time],
         download_time=[],
-        upload_time=[0],
+        upload_time=[],
         loss=[],
+        eval=eval,
     )
 
     while True:

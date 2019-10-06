@@ -45,7 +45,7 @@ class PostgressConnector:
         )
         self.query = \
             "INSERT INTO data " \
-            "VALUES (%(worker_id)s, %(run_id)s, %(step)s, %(loss)s, %(compute_time)s, %(download_time)s, %(upload_time)s, CURRENT_TIMESTAMP)"
+            "VALUES (%(worker_id)s, %(run_id)s, %(step_num)s, %(loss)s, %(compute_time)s, %(download_time)s, %(upload_time)s, CURRENT_TIMESTAMP)"
 
     def insert(self, data):
         cur = self.conn.cursor()
@@ -71,4 +71,3 @@ def get_module_name(filename):
 
 def nukedir(dir):
     shutil.rmtree(dir, ignore_errors=True)
-    

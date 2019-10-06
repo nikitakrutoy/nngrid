@@ -31,8 +31,6 @@ celery = Celery(
     broker='redis://localhost:6378'
 )
 
-db = PostgressMetricsConnector("localhost")
-
 def aggregate(updates):
     logging.info("Aggregating, " + STATE["status"])
     result = None
@@ -85,6 +83,7 @@ def apply(grads):
 
 @celery.task
 def metrics(data):
+    db = PostgressMetricsConnector("localhost")
     data = pickle.loads(data)
     data.update(
             run_id=STATE['run_id'],
@@ -94,6 +93,7 @@ def metrics(data):
             compute_time=data["compute_time"][-1],
         )
     db.insert(data)
+    db.conn.close()
 
 @celery.task
 def update(data):

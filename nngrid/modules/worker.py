@@ -11,9 +11,11 @@ import logging
 import sys
 import subprocess
 import numpy as np
+import torch
 from tqdm.auto import tqdm
 from functools import reduce
 
+device = torch.device("cuda") if torch.cuda.is_avaliable() else torch.device("cpu")
 
 def step(model_state):
     logging.info("Doing model step")
@@ -22,6 +24,7 @@ def step(model_state):
     module = im.import_module('model')
     model = module.Model()
     model.load_state_dict(model_state)
+    model = model.to(device)
 
     dataset = module.DatasetClass(
         root_path=os.path.join(state["project_path"]),
@@ -30,6 +33,8 @@ def step(model_state):
     batch_size = state["batch_size"]
     start = np.random.randint(0, len(dataset) - batch_size)
     X, y = dataset[start: start + batch_size]
+    X = X.to(device)
+    y = y.to(device)
 
     loss = module.Loss(model)
     loss_value = loss(X, y)

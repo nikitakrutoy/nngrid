@@ -19,8 +19,6 @@ from nngrid.utils import ExpandedPath, nukedir, PostgressMetricsConnector
 logging.getLogger("requests").setLevel(logging.INFO)
 logging.getLogger("pickle").setLevel(logging.INFO)
 
-db = PostgressMetricsConnector("localhost")
-
 class Master(Flask):
     @staticmethod
     def _run_gunicron():
@@ -96,6 +94,7 @@ def ping():
 
 @APP.route("/init")
 def init_worker():
+    db = PostgressMetricsConnector("localhost")
     remote_addr = str(request.environ['REMOTE_ADDR'])
     pid = str(request.args.get("pid"))
     worker_id = md5((remote_addr + pid).encode()).hexdigest()
@@ -105,6 +104,7 @@ def init_worker():
         f"WHERE run_id = '{STATE['run_id']}' "\
         f"AND worker_id = '{worker_id}' "
     last_step, compute_time = db.fetchone(query)
+    db.close()
     return jsonify(worker_id, last_step, compute_time)
 
 @APP.route("/metrics", methods=["POST"])

@@ -20,6 +20,10 @@ from filelock import Timeout, FileLock
 
 from nngrid.constants import *
 from nngrid.constants import STATE
+from nngrid.utils import PostgressConnector
+
+
+logging.getLogger("filelock").setLevel(logging.WARNING)
 
 celery = Celery(
     'tasks', 
@@ -27,16 +31,17 @@ celery = Celery(
     broker='redis://localhost:6378'
 )
 
+db = PostgressConnector("localhost")
 
 def aggregate(updates):
-    logging.info("Aggregating")
+    logging.info("Aggregating, " + STATE["status"])
     result = None
     for i, update in enumerate(updates):
         with open(f"{UPDATES_DIR}/{update}", "rb") as f:
             if i == 0:
-                result = pickle.load(f)["grads"]
+                result = pickle.load(f)
             else:
-                grad = pickle.load(f)["grads"]
+                grad = pickle.load(f)
                 for nth_params in range(len(result)):
                     result[nth_params] += grad[nth_params]
 
@@ -81,15 +86,27 @@ def apply(grads):
 
 @celery.task
 def update(data):
+    data = pickle.loads(data)
+    grads = data["grads"]
+    worker_state = data["worker_state"]
+    worker_state.update(
+        run_id=STATE['run_id'],
+        loss=worker_state["loss"][-1],
+        download_time=worker_state["download_time"][-1],
+        upload_time=worker_state["upload_time"][-1],
+        compute_time=worker_state["compute_time"][-1],
+    )
+    db.insert(worker_state)
     if STATE['mode'] == 'sync':
         file_hash = md5(data).hexdigest()
         states_dir = os.path.join(STATE["project_path"], "states",)
         lock_path = os.path.join(states_dir, "lock")
         with FileLock(lock_path, timeout=-1):
             with open(f"{UPDATES_DIR}/update_{file_hash}", "wb") as f:
-                f.write(data)
+                f.write(grads)
             updates = os.listdir(UPDATES_DIR)
-        if len(updates) >= STATE["workers_num"]:
+        logging.debug(updates)
+        if len(updates) == STATE["workers_num"]:
             grads = aggregate(updates)
             apply(grads)
             for item in updates:
@@ -97,5 +114,4 @@ def update(data):
             STATE["status"] = "serving"
 
     if STATE['mode'] == 'async':
-        grads = pickle.loads(data)["grads"]
         apply(grads)

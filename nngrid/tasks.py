@@ -14,6 +14,7 @@ import time
 import sys
 import io
 import logging
+import binascii
 from hashlib import md5
 
 from filelock import Timeout, FileLock
@@ -26,9 +27,9 @@ from nngrid.utils import PostgressMetricsConnector
 logging.getLogger("filelock").setLevel(logging.WARNING)
 
 celery = Celery(
-    'tasks', 
+    'nngrid.tasks', 
     backend='db+sqlite:///db.sqlite',
-    broker='redis://localhost:6378'
+    broker='redis://localhost:6379'
 )
 
 def aggregate(updates):
@@ -73,6 +74,8 @@ def apply(grads):
             param.grad = grad
         opt.step()
 
+        
+
         if not os.path.exists(states_dir):
             os.mkdir(states_dir)
 
@@ -82,9 +85,33 @@ def apply(grads):
 
 
 @celery.task
+def lr_change(lr):
+    sys.path.append(STATE["project_path"])
+    states_dir = os.path.join(STATE["project_path"], "states",)
+    lock_path = os.path.join(states_dir, "lock")
+    with FileLock(lock_path, timeout=-1) as l:
+        opt_state_path = os.path.join(states_dir, "opt_state.torch")
+        model_state_path = os.path.join(states_dir, "model_state.torch")
+        module = im.import_module('model')
+
+        model = module.Model(**STATE["model_config"])
+        if os.path.isfile(model_state_path):
+            model.load_state_dict(torch.load(model_state_path))
+
+        opt = module.Opt(model.parameters(), **STATE["opt_config"])
+        if os.path.isfile(opt_state_path):
+            opt.load_state_dict(torch.load(opt_state_path))
+
+        for g in opt.param_groups:
+            g['lr'] = lr
+
+        torch.save(opt.state_dict(), opt_state_path)
+        
+
+@celery.task
 def metrics(data):
     db = PostgressMetricsConnector("localhost")
-    data = pickle.loads(data)
+    data = pickle.loads(binascii.a2b_base64(data))
     data.update(
             run_id=STATE['run_id'],
             loss=data["loss"][-1],
@@ -97,7 +124,7 @@ def metrics(data):
 
 @celery.task
 def update(data):
-    grads = pickle.loads(data)
+    grads = pickle.loads(binascii.a2b_base64(data))
     if STATE['mode'] == 'sync':
         file_hash = md5(data).hexdigest()
         states_dir = os.path.join(STATE["project_path"], "states",)

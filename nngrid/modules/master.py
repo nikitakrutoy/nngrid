@@ -6,7 +6,8 @@ import pickle
 import json
 import click
 import subprocess
-import nngrid.tasks
+import binascii
+import nngrid.tasks as tasks
 import sys
 import logging
 import importlib as im
@@ -110,7 +111,7 @@ def init_worker():
 @APP.route("/metrics", methods=["POST"])
 def metrics():
     if STATE["status"] == "serving":
-        nngrid.tasks.metrics(request.get_data())
+        tasks.metrics.delay(binascii.b2a_base64(request.get_data()).decode())
     return Response(status=200)
 
 @APP.route("/update", methods=["POST"])
@@ -119,8 +120,15 @@ def update():
         updates = os.listdir(UPDATES_DIR)
         if STATE["mode"] == "sync" and len(updates) + 1 >= STATE["workers_num"]:
             STATE["status"] = "aggregating"
-        nngrid.tasks.update(request.get_data())
+        tasks.update.delay(binascii.b2a_base64(request.get_data()).decode())
     return Response(status=200)
+
+
+@APP.route("/lr_change", methods=["GET"])
+def lr_change():
+    tasks.lr_change.delay(float(request.args.get("lr")))
+    return Response(status=200)
+
 
 
 @APP.route("/pull", methods=["GET"])

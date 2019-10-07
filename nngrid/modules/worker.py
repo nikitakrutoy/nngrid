@@ -34,10 +34,9 @@ def step(model_state):
     alpha = 0.95
     if not state['eval']:
         start = np.random.randint(0, int(len(dataset) * alpha - batch_size)) 
-        X, y = dataset[start: start + batch_size]
     else:
-        start = int(len(dataset) * alpha)
-        X, y = dataset[start:]
+        start = np.random.randint(int(len(dataset) * alpha), len(dataset) - batch_size) 
+    X, y = dataset[start: start + batch_size]
     X = X.to(device)
     y = y.to(device)
 

@@ -104,7 +104,7 @@ def init_worker():
         f"WHERE run_id = '{STATE['run_id']}' "\
         f"AND worker_id = '{worker_id}' "
     last_step, compute_time = db.fetchone(query)
-    db.close()
+    db.conn.close()
     return jsonify(worker_id, last_step, compute_time)
 
 @APP.route("/metrics", methods=["POST"])

@@ -29,7 +29,8 @@ class State(redis.Redis):
         return super().set(key, value, ex=ex, px=px, nx=nx, xx=xx)
 
     def get(self, key):
-        return json.loads(super().get("nngrid:{key}".format(key=key)))
+        s = super().get("nngrid:{key}".format(key=key))
+        return json.loads(s) if s is not None else s
 
     def mset(self, mapping):
         return super().mset({

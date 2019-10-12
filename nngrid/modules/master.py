@@ -34,7 +34,8 @@ class Master(Flask):
             "--access-logfile", '-',
             "--error-logfile", '-',
             '--timeout', '1000',
-            '-w', '8',
+            '-w', str(STATE['workers_num']),
+            '-c', 'python:nngrid.gunicorn_config'
         ]
         logging.debug(" ".join(command))
         subprocess.call(command)
@@ -204,11 +205,11 @@ def restart():
 @click.command("master")
 @click.argument("project", required=1, type=ExpandedPath(exists=True, resolve_path=True))
 @click.option("--port", "-p", type=int, default=5000)
-@click.option("--mode", "-m", type=click.Choice(['sync', 'async'],), default='async')
+@click.option("--mode", "-m", type=click.Choice(['sync', 'async', 'hogwild'],), default='async')
 @click.option("--local", "-l", is_flag=True)
 @click.option("--dev", is_flag=True)
 @click.option("--config", "-c", type=str)
-@click.option("--workers_num", "-w", default=-1)
+@click.option("--workers_num", "-w", default=3)
 @click.option("--run_name", type=str)
 def run(*args, **kwargs):
     APP.run(*args, **kwargs)

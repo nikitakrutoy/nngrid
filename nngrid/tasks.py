@@ -12,6 +12,7 @@ import nngrid.utils as utils
 import visdom
 import time
 import sys
+import os
 import io
 import logging
 import binascii
@@ -146,3 +147,6 @@ def update(data):
     if STATE['mode'] == 'async':
         grads = pickle.loads(data)
         apply(grads)
+    if STATE['mode'] == 'hogwild':
+        port = STATE[f"gunicorn-{os.getpid()}-updater-port"]
+        requests.post(f"http://localhost:{port}/update", data=data)

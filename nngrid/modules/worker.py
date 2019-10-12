@@ -128,7 +128,7 @@ def worker(project, eval, config):
     state.update(
         worker_id=worker_id,
         project_path=project_path,
-        step_num=0 if last_step is None else last_step,
+        step_num=0 if last_step is None else last_step + 1,
         compute_time=[] if compute_time is None else [compute_time],
         download_time=[],
         upload_time=[],

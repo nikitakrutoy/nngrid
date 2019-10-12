@@ -17,6 +17,8 @@ from uuid import uuid1
 from nngrid.constants import *
 from nngrid.utils import ExpandedPath, nukedir, PostgressMetricsConnector
 
+import time
+
 logging.getLogger("requests").setLevel(logging.INFO)
 logging.getLogger("pickle").setLevel(logging.INFO)
 
@@ -32,7 +34,7 @@ class Master(Flask):
             "--access-logfile", '-',
             "--error-logfile", '-',
             '--timeout', '1000',
-            '-w', '3',
+            '-w', '8',
         ]
         logging.debug(" ".join(command))
         subprocess.call(command)
@@ -111,7 +113,7 @@ def init_worker():
 @APP.route("/metrics", methods=["POST"])
 def metrics():
     if STATE["status"] == "serving":
-        tasks.metrics.delay(binascii.b2a_base64(request.get_data()).decode())
+        tasks.metrics(binascii.b2a_base64(request.get_data()).decode())
     return Response(status=200)
 
 @APP.route("/update", methods=["POST"])
@@ -120,36 +122,45 @@ def update():
         updates = os.listdir(UPDATES_DIR)
         if STATE["mode"] == "sync" and len(updates) + 1 >= STATE["workers_num"]:
             STATE["status"] = "aggregating"
-        tasks.update.delay(binascii.b2a_base64(request.get_data()).decode())
+        tasks.update(request.get_data())
     return Response(status=200)
 
 
 @APP.route("/lr_change", methods=["GET"])
 def lr_change():
-    tasks.lr_change.delay(float(request.args.get("lr")))
+    tasks.lr_change(float(request.args.get("lr")))
     return Response(status=200)
 
 
 
 @APP.route("/pull", methods=["GET"])
 def pull():
+    start_lock = time.time()
     if STATE["status"] == "serving":
-        model_state_path = os.path.join(STATE["project_path"], "states", "model_state.torch")
-        model_state_path_lock = model_state_path + ".lock"
-        if os.path.isfile(model_state_path):
-            with FileLock(model_state_path_lock, timeout=1) as lock:
-                model_state = torch.load(model_state_path)
-        else:
-            sys.path.append(os.path.expanduser(STATE["project_path"]))
-            model_state = im.import_module('model').Model(**STATE["model_config"]).state_dict()
-            if not os.path.exists(os.path.join(STATE["project_path"], "states", )):
-                os.mkdir(os.path.join(STATE["project_path"], "states"))
-                torch.save(model_state, model_state_path)
-
-        return send_file(
-            io.BytesIO(pickle.dumps(model_state)),
-            attachment_filename="data",
-        )
+        states_dir = os.path.join(STATE["project_path"], "states",)
+        model_state_path = os.path.join(states_dir, "model_state.torch")
+        lock_path = os.path.join(states_dir, "lock")
+        lock = FileLock(lock_path, timeout=-1)
+        try:
+            with lock.acquire(poll_intervall=POLL_INTERVAL):
+                start_read = time.time()
+                if os.path.isfile(model_state_path):
+                    model_state = torch.load(model_state_path)
+                else:
+                    sys.path.append(os.path.expanduser(STATE["project_path"]))
+                    model_state = im.import_module('model').Model(**STATE["model_config"]).state_dict()
+                    if not os.path.exists(os.path.join(STATE["project_path"], "states", )):
+                        os.mkdir(os.path.join(STATE["project_path"], "states"))
+                        torch.save(model_state, model_state_path)
+                logging.debug("Read time " + str(time.time() - start_read))
+            
+            logging.debug("Lock time " + str(time.time() - start_lock))
+            return send_file(
+                io.BytesIO(pickle.dumps(model_state)),
+                attachment_filename="data",
+            )
+        except TimeoutError as e:
+            return Response("Busy now. Go play with your toys, son.", status=503)
     else:
         return Response("Busy now. Go play with your toys, son.", status=503)
 
@@ -180,8 +191,8 @@ def restart():
             os.listdir(UPDATES_DIR)
         )
     ))
-
-    with FileLock(lock_path, timeout=-1) as l:
+    lock = FileLock(lock_path, timeout=-1)
+    with  lock.acquire(poll_intervall=POLL_INTERVAL):
         os.remove(model_state_path)
         os.remove(opt_state_path)
     

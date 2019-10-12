@@ -57,8 +57,9 @@ def apply(grads):
     lock_path = os.path.join(states_dir, "lock")
 
     module = im.import_module('model')
+    lock = FileLock(lock_path, timeout=-1)
 
-    with FileLock(lock_path, timeout=-1) as lock:
+    with lock.acquire(poll_intervall=POLL_INTERVAL) as lock:
 
         model = module.Model(**STATE["model_config"])
         if os.path.isfile(model_state_path):
@@ -89,7 +90,8 @@ def lr_change(lr):
     sys.path.append(STATE["project_path"])
     states_dir = os.path.join(STATE["project_path"], "states",)
     lock_path = os.path.join(states_dir, "lock")
-    with FileLock(lock_path, timeout=-1) as l:
+    lock = FileLock(lock_path, timeout=-1)
+    with  lock.acquire(poll_intervall=POLL_INTERVAL):
         opt_state_path = os.path.join(states_dir, "opt_state.torch")
         model_state_path = os.path.join(states_dir, "model_state.torch")
         module = im.import_module('model')
@@ -124,14 +126,14 @@ def metrics(data):
 
 @celery.task
 def update(data):
-    grads = pickle.loads(binascii.a2b_base64(data))
     if STATE['mode'] == 'sync':
         file_hash = md5(data).hexdigest()
         states_dir = os.path.join(STATE["project_path"], "states",)
         lock_path = os.path.join(states_dir, "lock")
-        with FileLock(lock_path, timeout=-1):
+        lock = FileLock(lock_path, timeout=-1)
+        with  lock.acquire(poll_intervall=POLL_INTERVAL):
             with open(f"{UPDATES_DIR}/update_{file_hash}", "wb") as f:
-                f.write(grads)
+                f.write(data)
             updates = os.listdir(UPDATES_DIR)
         logging.debug(updates)
         if len(updates) == STATE["workers_num"]:
@@ -142,4 +144,5 @@ def update(data):
             STATE["status"] = "serving"
 
     if STATE['mode'] == 'async':
+        grads = pickle.loads(data)
         apply(grads)

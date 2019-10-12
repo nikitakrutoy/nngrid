@@ -16,6 +16,7 @@ import os
 import io
 import logging
 import binascii
+import redis_lock
 from hashlib import md5
 
 from filelock import Timeout, FileLock
@@ -58,9 +59,19 @@ def apply(grads):
     lock_path = os.path.join(states_dir, "lock")
 
     module = im.import_module('model')
-    lock = FileLock(lock_path, timeout=-1)
 
-    with lock.acquire(poll_intervall=POLL_INTERVAL) as lock:
+    if STATE["lock_type"] == "file":
+        lock = FileLock(lock_path, timeout=-1)
+        lock = lock.acquire
+        acquire_kwargs = FILE_LOCK_KWARGS
+    if STATE["lock_type"] == "redis":
+        lock = redis_lock.Lock
+        acquire_kwargs = dict(
+            redis_client=REDIS,
+            name="lock"
+        )
+
+    with lock(**acquire_kwargs) as lock:
 
         model = module.Model(**STATE["model_config"])
         if os.path.isfile(model_state_path):
@@ -91,8 +102,19 @@ def lr_change(lr):
     sys.path.append(STATE["project_path"])
     states_dir = os.path.join(STATE["project_path"], "states",)
     lock_path = os.path.join(states_dir, "lock")
-    lock = FileLock(lock_path, timeout=-1)
-    with  lock.acquire(poll_intervall=POLL_INTERVAL):
+
+    if STATE["lock_type"] == "file":
+        lock = FileLock(lock_path, timeout=-1)
+        lock = lock.acquire
+        acquire_kwargs = FILE_LOCK_KWARGS
+    if STATE["lock_type"] == "redis":
+        lock = redis_lock.Lock
+        acquire_kwargs = dict(
+            redis_client=REDIS,
+            name="lock"
+        )
+
+    with  lock(**acquire_kwargs):
         opt_state_path = os.path.join(states_dir, "opt_state.torch")
         model_state_path = os.path.join(states_dir, "model_state.torch")
         module = im.import_module('model')
@@ -114,7 +136,7 @@ def lr_change(lr):
 @celery.task
 def metrics(data):
     db = PostgressMetricsConnector("localhost")
-    data = pickle.loads(binascii.a2b_base64(data))
+    data = pickle.loads(data)
     data.update(
             run_id=STATE['run_id'],
             loss=data["loss"][-1],
@@ -131,8 +153,19 @@ def update(data):
         file_hash = md5(data).hexdigest()
         states_dir = os.path.join(STATE["project_path"], "states",)
         lock_path = os.path.join(states_dir, "lock")
-        lock = FileLock(lock_path, timeout=-1)
-        with  lock.acquire(poll_intervall=POLL_INTERVAL):
+
+        if STATE["lock_type"] == "file":
+            lock = FileLock(lock_path, timeout=-1)
+            lock = lock.acquire
+            acquire_kwargs = FILE_LOCK_KWARGS
+        if STATE["lock_type"] == "redis":
+            lock = redis_lock.Lock
+            acquire_kwargs = dict(
+                redis_client=REDIS,
+                name="lock"
+            )
+
+        with  lock(**acquire_kwargs):
             with open(f"{UPDATES_DIR}/update_{file_hash}", "wb") as f:
                 f.write(data)
             updates = os.listdir(UPDATES_DIR)

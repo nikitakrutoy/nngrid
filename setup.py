@@ -31,6 +31,7 @@ setuptools.setup(
         "filelock",
         "tqdm",
         "psycopg2-binary",
+        "python-redis-lock",
     ],
     entry_points={
         'console_scripts': [

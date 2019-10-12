@@ -70,7 +70,12 @@ def step(model_state):
     server = f"http://{state['master_url']}:{state['port']}"
     if not state["eval"]:
         grads = collect(model)
-        response = requests.post(server + "/update", data=pickle.dumps(grads))
+        while True:
+            try:
+                response = requests.post(server + "/update", data=pickle.dumps(grads))
+                break
+            except requests.exceptions.ConnectionError:
+                continue
         state["upload_time"].append(response.elapsed.total_seconds())
     else:
         state["upload_time"].append(0)

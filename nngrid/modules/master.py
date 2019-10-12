@@ -11,6 +11,7 @@ import nngrid.tasks as tasks
 import sys
 import logging
 import importlib as im
+import redis_lock
 from hashlib import md5
 from uuid import uuid1
 
@@ -53,8 +54,9 @@ class Master(Flask):
             local=True,
             dev=True,
             config=None,
-            workers_num=-1,
+            workers_num=3,
             run_name=None,
+            lock_type="redis"
     ):
         *_, project_name = os.path.abspath(project).split("/")
         STATE.mset(dict(
@@ -73,8 +75,10 @@ class Master(Flask):
             workers_num=workers_num,
             project=project,
             local=local,
-            run_id=uuid1().hex if run_name is None else run_name
+            run_id=uuid1().hex if run_name is None else run_name,
+            lock_type=lock_type
         ))
+        redis_lock.reset_all(REDIS)
 
         if dev:
             STATE["status"] = "serving"
@@ -114,7 +118,7 @@ def init_worker():
 @APP.route("/metrics", methods=["POST"])
 def metrics():
     if STATE["status"] == "serving":
-        tasks.metrics(binascii.b2a_base64(request.get_data()).decode())
+        tasks.metrics(request.get_data())
     return Response(status=200)
 
 @APP.route("/update", methods=["POST"])
@@ -141,9 +145,20 @@ def pull():
         states_dir = os.path.join(STATE["project_path"], "states",)
         model_state_path = os.path.join(states_dir, "model_state.torch")
         lock_path = os.path.join(states_dir, "lock")
-        lock = FileLock(lock_path, timeout=-1)
+
+        if STATE["lock_type"] == "file":
+            lock = FileLock(lock_path, timeout=-1)
+            lock = lock.acquire
+            acquire_kwargs = FILE_LOCK_KWARGS
+        if STATE["lock_type"] == "redis":
+            lock = redis_lock.Lock
+            acquire_kwargs = dict(
+                redis_client=REDIS,
+                name="lock"
+            )
+
         try:
-            with lock.acquire(poll_intervall=POLL_INTERVAL):
+            with lock(**acquire_kwargs):
                 start_read = time.time()
                 if os.path.isfile(model_state_path):
                     model_state = torch.load(model_state_path)
@@ -192,8 +207,17 @@ def restart():
             os.listdir(UPDATES_DIR)
         )
     ))
-    lock = FileLock(lock_path, timeout=-1)
-    with  lock.acquire(poll_intervall=POLL_INTERVAL):
+    if STATE["lock_type"] == "file":
+        lock = FileLock(lock_path, timeout=-1)
+        lock = lock.acquire
+        acquire_kwargs = FILE_LOCK_KWARGS
+    if STATE["lock_type"] == "redis":
+        lock = redis_lock.Lock
+        acquire_kwargs = dict(
+            redis_client=REDIS,
+            name="lock"
+        )
+    with  lock(**acquire_kwargs):
         os.remove(model_state_path)
         os.remove(opt_state_path)
     
@@ -211,5 +235,6 @@ def restart():
 @click.option("--config", "-c", type=str)
 @click.option("--workers_num", "-w", default=3)
 @click.option("--run_name", type=str)
+@click.option("--lock_type", type=click.Choice(['redis', 'file'],), default='redis')
 def run(*args, **kwargs):
     APP.run(*args, **kwargs)
